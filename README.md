@@ -1,14 +1,11 @@
 # PythonChessGUI+AI
  It's a game of chess, but hopefully with ai implemented asap
 # Installation
-To install for every platform write on your CLI 
+To install for every platform write on your CLI with pip or pip3
 
->pip3 install requirements.txt
+>PySimpleGUI
+>chess
 
-Or 
-
->pip install requirements.txt
-
-Then you can 
+Then you can
 
 >python3 PythonChessGUI.py
