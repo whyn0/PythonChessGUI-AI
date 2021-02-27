@@ -1,2 +1,2 @@
-PySimpleGUI
-python-chess
+PySimpleGUI==4.34.0
+chess==1.4.0
