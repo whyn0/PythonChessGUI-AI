@@ -70,6 +70,8 @@ key_to_position = {(0, 0): 'a8', (0, 1): 'b8', (0, 2): 'c8', (0, 3): 'd8', (0, 4
 ###########################################################################
 class Move:
     def __init__(self, move_state, fr_pos, to_pos, color, image):
+        self.is_promotion = False
+        self.promo_piece = None
         self.move_state = move_state
         self.fr_pos = fr_pos
         self.to_pos = to_pos
@@ -192,7 +194,7 @@ class GUI:
                             image_filename=piece_image)
 
     def update_psg_board(self, turn, fr_position, to_position, is_en_passant, is_kingside_castling,
-                         is_queenside_castling):
+                         is_queenside_castling, promotion):
         i, j = fr_position
         k, l = to_position
         self.psg_board[k][l] = self.psg_board[i][j]
@@ -220,7 +222,57 @@ class GUI:
             else:
                 self.psg_board[0][3] = ROOKB
                 self.psg_board[0][0] = BLANK
+        elif promotion is not None:
+            if promotion == 'q':
+                if turn == 0:
+                    self.psg_board[k][l] = QUEENW
+                else:
+                    self.psg_board[k][l] = QUEENB
+            elif promotion == 'n':
+                if turn == 0:
+                    self.psg_board[k][l] = KNIGHTW
+                else:
+                    self.psg_board[k][l] = KNIGHTB
+            elif promotion == 'b':
+                if turn == 0:
+                    self.psg_board[k][l] = BISHOPW
+                else:
+                    self.psg_board[k][l] = BISHOPB
+            elif promotion == 'r':
+                if turn == 0:
+                    self.psg_board[k][l] = ROOKW
+                else:
+                    self.psg_board[k][l] = ROOKB
 
+    def spawn_promo_window(self, turn):
+        window_name = 'Select Piece to Promote to'
+        layout = None
+        if turn == 0:
+            layout = [
+                [sg.Button(button_color=('white', '#f3f5df'), image_filename=queenW, key='wq'),
+                 sg.Button(button_color=('white', '#f3f5df'), image_filename=bishopW, key='wb'),
+                 sg.Button(button_color=('white', '#f3f5df'), image_filename=knightW, key='wn'),
+                 sg.Button(button_color=('white', '#f3f5df'), image_filename=rookW, key='wr')]
+            ]
+        else:
+            layout = [
+                [sg.Button(button_color=('white', '#f3f5df'), image_filename=queenB, key='bq'),
+                 sg.Button(button_color=('white', '#f3f5df'), image_filename=bishopB, key='bb'),
+                 sg.Button(button_color=('white', '#f3f5df'), image_filename=knightB, key='bn'),
+                 sg.Button(button_color=('white', '#f3f5df'), image_filename=rookB, key='br')]
+            ]
+        window = sg.Window(window_name,
+                           layout,
+                           modal=True,
+                           disable_close=True)
+        while True:
+            button, value = window.read()
+            if type(button) is str:
+                break
+
+        window.close()
+
+        return button[1]
 
 class ChessProcessor:
     board = chess.Board()
@@ -272,8 +324,18 @@ class ChessGame:
             # need to validate move with chess processor
             self.move.to_string(button)
             self.move.to_pos = button
-
+            promo_piece_string = None
+            #promotion case
+            i , j = button
+            k , l = self.move.fr_pos
+            if self.turn == 0 and i == 0 and self.gui.psg_board[k][l] == PAWNW:
+                promo_piece_string = self.gui.spawn_promo_window(self.turn)
+                self.move.move_str += promo_piece_string
+            elif self.turn == 1 and i == 7 and self.gui.psg_board[k][l] == PAWNB:
+                promo_piece_string = self.gui.spawn_promo_window(self.turn)
+                self.move.move_str += promo_piece_string
             if self.chess_processor.validate_move(self.move.move_str):
+                promotion = False
                 en_passant = False
                 kingside_castling = False
                 queenside_castling = False
@@ -286,8 +348,9 @@ class ChessGame:
                         kingside_castling = True
                     else:
                         queenside_castling = True
+
                 self.gui.update_psg_board(self.turn, self.move.fr_pos, button, en_passant, kingside_castling,
-                                          queenside_castling)
+                                          queenside_castling, promo_piece_string)
 
                 self.gui.update_moves_history(self.chess_processor.board.san(move))
                 self.chess_processor.board.push(move)
