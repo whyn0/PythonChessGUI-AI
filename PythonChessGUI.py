@@ -63,7 +63,7 @@ key_to_position = {(0, 0): 'a8', (0, 1): 'b8', (0, 2): 'c8', (0, 3): 'd8', (0, 4
                    (5, 7): 'h3',
                    (6, 0): 'a2', (6, 1): 'b2', (6, 2): 'c2', (6, 3): 'd2', (6, 4): 'e2', (6, 5): 'f2', (6, 6): 'g2',
                    (6, 7): 'h2',
-                   (7, 0): 'a1', (7, 1): 'b1', (7, 1): 'c1', (7, 3): 'd1', (7, 4): 'e1', (7, 5): 'f1', (7, 6): 'g1',
+                   (7, 0): 'a1', (7, 1): 'b1', (7, 2): 'c1', (7, 3): 'd1', (7, 4): 'e1', (7, 5): 'f1', (7, 6): 'g1',
                    (7, 7): 'h1'}
 
 
@@ -83,8 +83,10 @@ class Move:
         else:
             self.move_state = 0
         print(self.move_state)
+
     def to_string(self, key):
         self.move_str += key_to_position.get(key)
+
     def clear_str(self):
         self.move_str = ''
 
@@ -94,6 +96,7 @@ class GUI:
     move state -> 0 = the piece to move is selected
                   1 = the destination button is selected
     '''
+
     def __init__(self, w_size, is_white):
         self.w_size = w_size
         self.is_white = is_white
@@ -161,6 +164,9 @@ class GUI:
         ]
         return layout
 
+    def update_moves_history(self, san_move):
+        self.window['--MOVE HISTORY--'].print(san_move , background_color='light_blue')
+
     def create_window(self, name, layout, size):
         window = sg.Window(name,
                            layout=layout,
@@ -169,6 +175,7 @@ class GUI:
                            default_button_element_size=(12, 1),
                            auto_size_buttons=False)
         return window
+
     def redraw_board(self, window):
         """
         Redraw board at start and afte a move.
@@ -178,18 +185,41 @@ class GUI:
         for i in range(8):
             for j in range(8):
                 color = self.black_square_color if (i + j) % 2 else \
-                        self.white_square_color
+                    self.white_square_color
                 piece_image = images[self.psg_board[i][j]]
                 elem = window.FindElement(key=(i, j))
                 elem.Update(button_color=('white', color),
                             image_filename=piece_image)
 
-    def update_psg_board(self, move_list):
-        i, j = move_list[0]
-        k, l = move_list[1]
+    def update_psg_board(self, turn, fr_position, to_position, is_en_passant, is_kingside_castling,
+                         is_queenside_castling):
+        i, j = fr_position
+        k, l = to_position
         self.psg_board[k][l] = self.psg_board[i][j]
         self.psg_board[i][j] = BLANK
+        if is_en_passant:
 
+            # if it's white's turn then i'll remove pawn from i + 1 row and col = to_position
+            if turn == 0:
+                self.psg_board[k + 1][l] = BLANK
+            # if it's black's turn then i'll remove pawn from i - 1 row and col = to_position
+            else:
+                self.psg_board[k - 1][l] = BLANK
+        elif is_kingside_castling:
+
+            if turn == 0:
+                self.psg_board[7][5] = ROOKW
+                self.psg_board[7][7] = BLANK
+            else:
+                self.psg_board[0][5] = ROOKB
+                self.psg_board[0][7] = BLANK
+        elif is_queenside_castling:
+            if turn == 0:
+                self.psg_board[7][3] = ROOKW
+                self.psg_board[7][0] = BLANK
+            else:
+                self.psg_board[0][3] = ROOKB
+                self.psg_board[0][0] = BLANK
 
 
 class ChessProcessor:
@@ -201,10 +231,12 @@ class ChessProcessor:
             ret = True
         return ret
 
+
 class ChessGame:
     chess_processor = None
     gui = None
     move = None
+    turn = 0  # 0 for white, 1 for black
 
     def __init__(self, gui_size, is_white):
 
@@ -218,6 +250,7 @@ class ChessGame:
         while True:
             event, values = window.read(timeout=500)
             if type(event) is tuple:
+                print(f'TURN : {self.turn}')
                 self.move_piece(event)
             elif event in ('Quit', sg.WIN_CLOSED):
                 break
@@ -227,7 +260,7 @@ class ChessGame:
 
         window = self.gui.window
         self.gui.redraw_board(window)
-        if self.move.move_state == 0: #then is the first piece selected
+        if self.move.move_state == 0:  # then is the first piece selected
             self.move.fr_pos = button
             self.move.color = window[button].ButtonColor
             self.move.image = window[button].ImageFilename
@@ -236,28 +269,44 @@ class ChessGame:
             self.move.to_string(button)
 
         elif self.move.move_state == 1 and self.move.fr_pos != button:
-            #need to validate move with chess processor
+            # need to validate move with chess processor
             self.move.to_string(button)
             self.move.to_pos = button
 
             if self.chess_processor.validate_move(self.move.move_str):
-                print(self.move.image)
+                en_passant = False
+                kingside_castling = False
+                queenside_castling = False
                 window[button].update(image_filename=self.move.image)
-                #window[self.move.fr_pos].update(button_color=self.move.color, image_filename=blank)
-                self.gui.update_psg_board([self.move.fr_pos, button])
-                print(self.move.move_str)
-                self.chess_processor.board.push(chess.Move.from_uci(self.move.move_str))
-                self.move.clear_str()
+                move = chess.Move.from_uci(self.move.move_str)
+                if self.chess_processor.board.is_en_passant(move):
+                    en_passant = True
+                if self.chess_processor.board.is_castling(move):
+                    if self.chess_processor.board.is_kingside_castling(move):
+                        kingside_castling = True
+                    else:
+                        queenside_castling = True
+                self.gui.update_psg_board(self.turn, self.move.fr_pos, button, en_passant, kingside_castling,
+                                          queenside_castling)
 
-            else: #if validation fails then reset move
+                self.gui.update_moves_history(self.chess_processor.board.san(move))
+                self.chess_processor.board.push(move)
+                self.move.clear_str()
+                self.switch_turn()
+            else:  # if validation fails then reset move
                 print('invalid move')
                 window[self.move.fr_pos].update(button_color=self.move.color)
                 self.move.clear_str()
             self.move.switch()
             self.gui.redraw_board(window)
 
+    def switch_turn(self):
+        self.turn = 1 if self.turn == 0 else 0
+
+
+
 def main():
-    game = ChessGame((800,600), True)
+    game = ChessGame((800, 600), True)
     game.run()
 
 
